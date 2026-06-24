@@ -254,7 +254,22 @@ async function initSchema() {
   await pool.query(`ALTER TABLE store_items ADD COLUMN IF NOT EXISTS unlock_type VARCHAR(20) NOT NULL DEFAULT 'purchase'`);
   await pool.query(`ALTER TABLE store_items ADD COLUMN IF NOT EXISTS unlock_requirement VARCHAR(50) NULL`);
 
-  // Normalize existing phone numbers to E.164
+  // Normalize existing phone numbers to E.164 (dedup-safe)
+  await pool.query(`
+    DELETE FROM users WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY
+          CASE
+            WHEN phone_number LIKE '+%' THEN phone_number
+            WHEN length(regexp_replace(phone_number, '\\D', '', 'g')) = 11
+              THEN '+' || regexp_replace(phone_number, '\\D', '', 'g')
+            ELSE '+1' || regexp_replace(phone_number, '\\D', '', 'g')
+          END
+        ORDER BY id ASC) AS rn
+        FROM users
+      ) ranked WHERE rn > 1
+    )
+  `);
   await pool.query(`
     UPDATE users SET phone_number =
       CASE
