@@ -401,7 +401,7 @@ const App = (() => {
           if (!secret) { devMsg().textContent = 'Enter secret first.'; return; }
           try {
             const res = await api('POST', '/api/dev/login', { username, secret });
-            await loadAppState();
+            await loadAppData();
             show('wire');
           } catch(e) { devMsg().textContent = e.message; }
         });
