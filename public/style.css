@@ -1074,6 +1074,8 @@ body::after {
 }
 
 /* ── MAP POPUP ── */
+.leaflet-div-icon { background: none !important; border: none !important; }
+
 .street-popup .leaflet-popup-content-wrapper {
   background: var(--bg2);
   border: 1px solid var(--border-glow);

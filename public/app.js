@@ -1641,14 +1641,36 @@ const App = (() => {
         courts.forEach(court => {
           const color = court.holder_color || '#555';
           const isHeld = !!court.holding_crew_id;
-          const marker = L.circleMarker([court.latitude, court.longitude], {
-            radius: court.type === 'venue' ? 10 : 8,
-            fillColor: color,
-            color: isHeld ? '#fff' : '#444',
-            weight: isHeld ? 2 : 1,
-            opacity: 1,
-            fillOpacity: isHeld ? 0.9 : 0.4,
-          }).addTo(mapInstance);
+          const size = court.type === 'venue' ? 40 : 34;
+
+          let marker;
+          if (isHeld) {
+            // Crew avatar icon — logo image with initials fallback
+            const initials = (court.holder_name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+            const fs = Math.floor(size * 0.34);
+            const icon = L.divIcon({
+              className: '',
+              html: `
+                <div style="width:${size}px;height:${size}px;border-radius:50%;background:${color}22;border:2.5px solid ${color};overflow:hidden;display:flex;align-items:center;justify-content:center;position:relative;box-shadow:0 0 10px ${color}66;">
+                  <span style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:${fs}px;color:${color};position:absolute;pointer-events:none;">${initials}</span>
+                  <img src="/api/crews/${court.holding_crew_id}/logo" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:50%;" onerror="this.style.display='none'">
+                </div>`,
+              iconSize: [size, size],
+              iconAnchor: [size/2, size/2],
+              popupAnchor: [0, -(size/2 + 4)],
+            });
+            marker = L.marker([court.latitude, court.longitude], { icon }).addTo(mapInstance);
+          } else {
+            // Unclaimed — simple dot
+            marker = L.circleMarker([court.latitude, court.longitude], {
+              radius: court.type === 'venue' ? 7 : 5,
+              fillColor: '#333',
+              color: '#555',
+              weight: 1,
+              opacity: 1,
+              fillOpacity: 0.8,
+            }).addTo(mapInstance);
+          }
 
           marker.bindPopup(`
             <div style="font-family:'Big Shoulders Display',sans-serif;min-width:160px;">
