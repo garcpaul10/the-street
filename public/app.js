@@ -322,6 +322,22 @@ const App = (() => {
           <p class="login-footer">NO REGISTRATION &bull; NO TRACKERS &bull; PURE GAME</p>
         </div>
       </div>
+
+      ${new URLSearchParams(location.search).get('dev') === '1' ? `
+        <div id="dev-panel" style="position:fixed;bottom:0;left:0;right:0;background:#0a0b0d;border-top:1px solid rgba(255,59,78,0.4);padding:12px 16px;z-index:999;">
+          <div style="font-family:'Big Shoulders Display',sans-serif;font-size:10px;font-weight:900;letter-spacing:0.15em;color:var(--red);margin-bottom:8px;">🔧 DEV LOGIN</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="dev-secret" type="password" placeholder="Secret" style="flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px;">
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${['RivalBoss','RivalPlayer','WildCard'].map(u =>
+              `<button class="btn btn-outline btn-sm dev-login-btn" data-username="${u}" style="font-size:11px;">${u}</button>`
+            ).join('')}
+            <button id="dev-seed-btn" class="btn btn-sm" style="font-size:11px;background:rgba(255,59,78,0.15);color:var(--red);border:1px solid rgba(255,59,78,0.3);">SEED DATA</button>
+          </div>
+          <div id="dev-msg" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
+        </div>
+      ` : ''}
     `;
   }
 
@@ -372,6 +388,34 @@ const App = (() => {
         errEl.style.display = 'block';
       }
     });
+
+    // Dev panel
+    if (new URLSearchParams(location.search).get('dev') === '1') {
+      const devMsg = () => document.getElementById('dev-msg');
+      const devSecret = () => document.getElementById('dev-secret')?.value.trim();
+
+      document.querySelectorAll('.dev-login-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const username = btn.dataset.username;
+          const secret = devSecret();
+          if (!secret) { devMsg().textContent = 'Enter secret first.'; return; }
+          try {
+            const res = await api('POST', '/api/dev/login', { username, secret });
+            await loadAppState();
+            show('wire');
+          } catch(e) { devMsg().textContent = e.message; }
+        });
+      });
+
+      document.getElementById('dev-seed-btn')?.addEventListener('click', async () => {
+        const secret = devSecret();
+        if (!secret) { devMsg().textContent = 'Enter secret first.'; return; }
+        try {
+          const res = await api('POST', '/api/dev/seed', { secret });
+          devMsg().textContent = `✓ Seeded ${res.users.filter(u => !u.skipped).length} users, crew id ${res.rivalCrewId}`;
+        } catch(e) { devMsg().textContent = e.message; }
+      });
+    }
   }
 
   // ── OTP VIEW ──

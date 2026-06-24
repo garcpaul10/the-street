@@ -166,6 +166,65 @@ app.post('/api/auth/complete-signup', async (req, res) => {
   }
 });
 
+// ── DEV / TEST endpoints — only active when DEV_SECRET is set ──
+app.post('/api/dev/login', async (req, res) => {
+  const secret = process.env.DEV_SECRET;
+  if (!secret) return res.status(404).json({ error: 'Not found' });
+  if (req.body.secret !== secret) return res.status(403).json({ error: 'Forbidden' });
+  const user = await pool.query('SELECT id, username FROM users WHERE username = $1', [req.body.username]);
+  if (!user.rows.length) return res.status(404).json({ error: 'User not found' });
+  req.session.userId = user.rows[0].id;
+  res.json({ success: true, username: user.rows[0].username });
+});
+
+app.post('/api/dev/seed', async (req, res) => {
+  const secret = process.env.DEV_SECRET;
+  if (!secret) return res.status(404).json({ error: 'Not found' });
+  if (req.body.secret !== secret) return res.status(403).json({ error: 'Forbidden' });
+
+  const users = [
+    { username: 'RivalBoss',   phone: '+15550010001', gender: 'Male',   dob: '1995-03-12' },
+    { username: 'RivalPlayer', phone: '+15550010002', gender: 'Male',   dob: '1998-07-22' },
+    { username: 'WildCard',    phone: '+15550010003', gender: 'Female', dob: '2000-01-05' },
+  ];
+
+  const created = [];
+  for (const u of users) {
+    const ex = await pool.query('SELECT id FROM users WHERE username = $1', [u.username]);
+    if (ex.rows.length) { created.push({ username: u.username, id: ex.rows[0].id, skipped: true }); continue; }
+    const r = await pool.query(
+      `INSERT INTO users (username, phone_number, date_of_birth, gender, tier)
+       VALUES ($1,$2,$3,$4,'free') RETURNING id`,
+      [u.username, u.phone, u.dob, u.gender]
+    );
+    await pool.query('INSERT INTO player_stats (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [r.rows[0].id]);
+    created.push({ username: u.username, id: r.rows[0].id });
+  }
+
+  // Create rival crew if not exists
+  const existingCrew = await pool.query("SELECT id FROM crews WHERE name = 'Downtown Kings'");
+  let rivalCrewId;
+  if (existingCrew.rows.length) {
+    rivalCrewId = existingCrew.rows[0].id;
+  } else {
+    const boss = created.find(u => u.username === 'RivalBoss');
+    const crew = await pool.query(
+      `INSERT INTO crews (name, sport_type, age_class, gender_class, boss_id, map_color_hex, coin_balance, reputation_score)
+       VALUES ('Downtown Kings','basketball','Open','Male',$1,'#ff3b4e',500,120) RETURNING id`,
+      [boss.id]
+    );
+    rivalCrewId = crew.rows[0].id;
+    for (const u of created) {
+      await pool.query(
+        'INSERT INTO crew_rosters (crew_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [rivalCrewId, u.id]
+      );
+    }
+  }
+
+  res.json({ success: true, users: created, rivalCrewId });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
