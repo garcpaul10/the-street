@@ -424,7 +424,8 @@ app.get('/api/players/:id', requireAuth, async (req, res) => {
             COALESCE(ps.total_appearances, 0) AS total_appearances,
             COALESCE(ps.wins, 0) AS wins,
             COALESCE(ps.losses, 0) AS losses,
-            COALESCE(ps.reputation, 100) AS reputation
+            COALESCE(ps.reputation, 100) AS reputation,
+            COALESCE(ps.coin_balance, 100) AS coin_balance
      FROM users u
      LEFT JOIN player_stats ps ON ps.user_id = u.id
      WHERE u.id = $1`, [id]
@@ -737,6 +738,25 @@ async function resolveMatch(m) {
       [winnerId, -rake, 'rake', m.id]);
   }
 
+  // Spectator wager payouts — parimutuel: losers' pool split to winners proportionally
+  const wagers = await pool.query('SELECT * FROM match_wagers WHERE match_id=$1 AND status=$2', [m.id, 'pending']);
+  if (wagers.rows.length) {
+    const winners = wagers.rows.filter(w => w.crew_id_bet_on === winnerId);
+    const losers  = wagers.rows.filter(w => w.crew_id_bet_on === loserId);
+    const loserPool = losers.reduce((s, w) => s + w.amount, 0);
+    const winnerStake = winners.reduce((s, w) => s + w.amount, 0);
+    for (const w of losers) {
+      await pool.query('UPDATE match_wagers SET status=$1 WHERE id=$2', ['lost', w.id]);
+    }
+    for (const w of winners) {
+      const share = winnerStake > 0 ? Math.floor(loserPool * w.amount / winnerStake) : 0;
+      const payout = w.amount + share;
+      await pool.query('UPDATE match_wagers SET status=$1, payout=$2 WHERE id=$3', ['won', payout, w.id]);
+      await pool.query('UPDATE player_stats SET coin_balance = coin_balance + $1 WHERE user_id=$2', [payout, w.user_id]);
+    }
+    // No winners (everyone bet on loser) — house keeps nothing, already deducted
+  }
+
   // Clean-play bonus (no dispute)
   if (!m.disputed_at) {
     const cleanBonus = 10;
@@ -1009,6 +1029,14 @@ async function autoVoidExpiredDisputes() {
       await pool.query('INSERT INTO coin_transactions (crew_id, amount, reason, match_id) VALUES ($1, $2, $3, $4)',
         [m.defender_crew_id, m.wager_amount, 'match_void_refund', m.id]);
     }
+    // Refund spectator wagers
+    const spectatorWagers = await pool.query(
+      `SELECT * FROM match_wagers WHERE match_id=$1 AND status='pending'`, [m.id]
+    );
+    for (const w of spectatorWagers.rows) {
+      await pool.query('UPDATE match_wagers SET status=$1, payout=$2 WHERE id=$3', ['refunded', w.amount, w.id]);
+      await pool.query('UPDATE player_stats SET coin_balance = coin_balance + $1 WHERE user_id=$2', [w.amount, w.user_id]);
+    }
   }
 }
 
@@ -1126,6 +1154,62 @@ app.post('/api/matches/:id/hype', requireAuth, async (req, res) => {
     }
   }
   res.json({ hype_count: count });
+});
+
+// ── SPECTATOR WAGERS ──
+
+// Get wager totals + user's existing bet for a match
+app.get('/api/matches/:id/wagers', requireAuth, async (req, res) => {
+  const matchId = req.params.id;
+  const userId = req.session.userId;
+  const [totals, mine, bal] = await Promise.all([
+    pool.query(`
+      SELECT crew_id_bet_on, SUM(amount) AS total
+      FROM match_wagers WHERE match_id = $1 AND status = 'pending'
+      GROUP BY crew_id_bet_on
+    `, [matchId]),
+    pool.query(`SELECT * FROM match_wagers WHERE match_id=$1 AND user_id=$2`, [matchId, userId]),
+    pool.query(`SELECT coin_balance FROM player_stats WHERE user_id=$1`, [userId]),
+  ]);
+  res.json({
+    totals: totals.rows,
+    mine: mine.rows[0] || null,
+    coin_balance: bal.rows[0]?.coin_balance ?? 100,
+  });
+});
+
+// Place a wager
+app.post('/api/matches/:id/wager', requireAuth, async (req, res) => {
+  const matchId = parseInt(req.params.id);
+  const userId = req.session.userId;
+  const { crew_id, amount } = req.body;
+  const coins = parseInt(amount);
+  if (!coins || coins < 5) return res.status(400).json({ error: 'Minimum bet is 5 coins.' });
+  if (coins > 500) return res.status(400).json({ error: 'Maximum bet is 500 coins.' });
+
+  const match = await pool.query('SELECT * FROM matches WHERE id=$1', [matchId]);
+  if (!match.rows.length) return res.status(404).json({ error: 'Match not found.' });
+  if (match.rows[0].status !== 'locked') return res.status(400).json({ error: 'Wagers only open on locked matches.' });
+  if (crew_id !== match.rows[0].challenger_crew_id && crew_id !== match.rows[0].defender_crew_id) {
+    return res.status(400).json({ error: 'Invalid crew.' });
+  }
+
+  // Ensure player_stats row exists
+  await pool.query(`INSERT INTO player_stats (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [userId]);
+
+  const bal = await pool.query('SELECT coin_balance FROM player_stats WHERE user_id=$1', [userId]);
+  if ((bal.rows[0]?.coin_balance ?? 0) < coins) return res.status(400).json({ error: 'Not enough coins.' });
+
+  const existing = await pool.query('SELECT id FROM match_wagers WHERE match_id=$1 AND user_id=$2', [matchId, userId]);
+  if (existing.rows.length) return res.status(400).json({ error: 'You already have a bet on this match.' });
+
+  await pool.query('UPDATE player_stats SET coin_balance = coin_balance - $1 WHERE user_id=$2', [coins, userId]);
+  await pool.query(
+    'INSERT INTO match_wagers (match_id, user_id, crew_id_bet_on, amount) VALUES ($1,$2,$3,$4)',
+    [matchId, userId, crew_id, coins]
+  );
+  const newBal = await pool.query('SELECT coin_balance FROM player_stats WHERE user_id=$1', [userId]);
+  res.json({ success: true, coin_balance: newBal.rows[0].coin_balance });
 });
 
 // ── MAP ──

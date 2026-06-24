@@ -282,6 +282,20 @@ async function initSchema() {
   `);
 
   await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS reputation INTEGER NOT NULL DEFAULT 100`);
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS coin_balance INTEGER NOT NULL DEFAULT 100`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS match_wagers (
+      id SERIAL PRIMARY KEY,
+      match_id INTEGER REFERENCES matches(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      crew_id_bet_on INTEGER REFERENCES crews(id) ON DELETE CASCADE,
+      amount INTEGER NOT NULL,
+      payout INTEGER NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(match_id, user_id)
+    )
+  `);
   await pool.query(`ALTER TABLE crews ADD COLUMN IF NOT EXISTS logo_url TEXT NULL`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crew_trophy_case (

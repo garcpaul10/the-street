@@ -1420,6 +1420,41 @@ const App = (() => {
           ` : ''}
         </div>
 
+        ${isLocked ? `
+          <!-- Wager section -->
+          <div class="wager-panel" id="wager-panel-${m.id}" data-match="${m.id}" data-c="${m.challenger_crew_id}" data-d="${m.defender_crew_id}" data-cname="${m.challenger_name}" data-dname="${m.defender_name}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-family:'Big Shoulders Display',sans-serif;font-size:10px;font-weight:900;letter-spacing:0.1em;color:var(--muted);">PLACE YOUR BET</span>
+              <span class="wager-balance" style="margin-left:auto;font-family:'Big Shoulders Display',sans-serif;font-size:10px;font-weight:900;color:var(--volt);">⚡ — COINS</span>
+            </div>
+            <!-- Odds bar -->
+            <div class="wager-odds-bar" style="display:flex;height:4px;border-radius:2px;overflow:hidden;margin-bottom:10px;background:var(--bg3);">
+              <div class="wager-odds-c" style="height:100%;background:${cColor};width:50%;transition:width 0.4s;"></div>
+              <div class="wager-odds-d" style="height:100%;background:${dColor};flex:1;transition:width 0.4s;"></div>
+            </div>
+            <div class="wager-odds-labels" style="display:flex;justify-content:space-between;margin-bottom:10px;">
+              <span class="wager-odds-c-label" style="font-family:'Big Shoulders Display',sans-serif;font-size:10px;color:${cColor};">${m.challenger_name} —</span>
+              <span class="wager-odds-d-label" style="font-family:'Big Shoulders Display',sans-serif;font-size:10px;color:${dColor};">— ${m.defender_name}</span>
+            </div>
+            <div class="wager-bet-ui" style="display:flex;flex-direction:column;gap:8px;">
+              <!-- quick amounts -->
+              <div style="display:flex;gap:6px;">
+                ${[10,25,50,100].map(a => `<button class="wager-amt-btn" data-amt="${a}" style="flex:1;padding:5px 0;font-family:'Big Shoulders Display',sans-serif;font-size:11px;font-weight:900;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">+${a}</button>`).join('')}
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="number" class="wager-custom-input form-input" placeholder="Custom" min="5" max="500" style="flex:1;font-size:12px;padding:7px 10px;height:34px;">
+                <span style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;color:var(--muted);">COINS</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <button class="btn wager-bet-btn" data-side="c" style="font-size:11px;padding:8px;background:${cColor}22;border:1px solid ${cColor}66;color:${cColor};border-radius:6px;font-family:'Big Shoulders Display',sans-serif;font-weight:900;letter-spacing:0.06em;">BET ${m.challenger_name.split(' ')[0].toUpperCase()}</button>
+                <button class="btn wager-bet-btn" data-side="d" style="font-size:11px;padding:8px;background:${dColor}22;border:1px solid ${dColor}66;color:${dColor};border-radius:6px;font-family:'Big Shoulders Display',sans-serif;font-weight:900;letter-spacing:0.06em;">BET ${m.defender_name.split(' ')[0].toUpperCase()}</button>
+              </div>
+              <div class="wager-msg" style="font-size:11px;min-height:14px;text-align:center;"></div>
+            </div>
+          </div>
+          <div style="height:10px;"></div>
+        ` : ''}
+
         <!-- Action -->
         <button class="btn ${isLive ? 'btn-danger' : isLocked ? 'btn-volt' : 'btn-outline'} btn-full" style="font-size:12px;" onclick="App.navMatchDetail(${m.id})">VIEW MATCH →</button>
       </div>
@@ -1436,7 +1471,84 @@ const App = (() => {
     }).catch(() => {});
   }
 
-  function bindWireContent() {}
+  function bindWireContent() {
+    document.querySelectorAll('.wager-panel').forEach(panel => {
+      const matchId = panel.dataset.match;
+      const cId = parseInt(panel.dataset.c);
+      const dId = parseInt(panel.dataset.d);
+      let selectedAmt = 10;
+
+      // Load odds + user balance
+      api('GET', `/api/matches/${matchId}/wagers`).then(data => {
+        // Update balance
+        panel.querySelector('.wager-balance').textContent = `⚡ ${data.coin_balance} COINS`;
+
+        // Update odds bar
+        const cTotal = data.totals.find(t => t.crew_id_bet_on === cId)?.total || 0;
+        const dTotal = data.totals.find(t => t.crew_id_bet_on === dId)?.total || 0;
+        const total = cTotal + dTotal;
+        const cPct = total ? Math.round(cTotal / total * 100) : 50;
+        panel.querySelector('.wager-odds-c').style.width = cPct + '%';
+        panel.querySelector('.wager-odds-c-label').textContent = `${panel.dataset.cname} ${total ? cPct + '%' : '—'}`;
+        panel.querySelector('.wager-odds-d-label').textContent = `${total ? (100-cPct) + '%' : '—'} ${panel.dataset.dname}`;
+
+        // If already bet, show result instead
+        if (data.mine) {
+          const side = data.mine.crew_id_bet_on === cId ? panel.dataset.cname : panel.dataset.dname;
+          panel.querySelector('.wager-bet-ui').innerHTML = `
+            <div style="text-align:center;font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;color:var(--volt);">
+              ⚡ YOU BET ${data.mine.amount} ON ${side.toUpperCase()}
+            </div>`;
+        }
+      }).catch(() => {});
+
+      // Quick amount buttons
+      panel.querySelectorAll('.wager-amt-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          panel.querySelectorAll('.wager-amt-btn').forEach(b => b.style.borderColor = 'var(--border)');
+          btn.style.borderColor = 'var(--volt)';
+          btn.style.color = 'var(--volt)';
+          selectedAmt = parseInt(btn.dataset.amt);
+          panel.querySelector('.wager-custom-input').value = '';
+        });
+      });
+
+      panel.querySelector('.wager-custom-input')?.addEventListener('click', e => e.stopPropagation());
+      panel.querySelector('.wager-custom-input')?.addEventListener('input', e => {
+        panel.querySelectorAll('.wager-amt-btn').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--muted)'; });
+        selectedAmt = parseInt(e.target.value) || 0;
+      });
+
+      // Bet buttons
+      panel.querySelectorAll('.wager-bet-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const side = btn.dataset.side;
+          const crewId = side === 'c' ? cId : dId;
+          const amt = selectedAmt;
+          const msgEl = panel.querySelector('.wager-msg');
+          if (!amt || amt < 5) { msgEl.textContent = 'Minimum 5 coins.'; msgEl.style.color = 'var(--red)'; return; }
+          try {
+            btn.disabled = true;
+            const res = await api('POST', `/api/matches/${matchId}/wager`, { crew_id: crewId, amount: amt });
+            msgEl.style.color = 'var(--volt)';
+            msgEl.textContent = `Bet placed! Balance: ${res.coin_balance} coins`;
+            const side2 = crewId === cId ? panel.dataset.cname : panel.dataset.dname;
+            panel.querySelector('.wager-bet-ui').innerHTML = `
+              <div style="text-align:center;font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;color:var(--volt);">
+                ⚡ YOU BET ${amt} ON ${side2.toUpperCase()}
+              </div>`;
+            panel.querySelector('.wager-balance').textContent = `⚡ ${res.coin_balance} COINS`;
+          } catch(e) {
+            msgEl.style.color = 'var(--red)';
+            msgEl.textContent = e.message;
+            btn.disabled = false;
+          }
+        });
+      });
+    });
+  }
 
   // ── MAP VIEW ──
   let mapInstance = null;
