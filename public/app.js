@@ -1726,29 +1726,32 @@ const App = (() => {
           geocodeDebounce = setTimeout(async () => {
             try {
               const res = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,
-                { headers: { 'Accept-Language': 'en', 'User-Agent': 'TheStreetApp/1.0' } }
+                `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lang=en`,
               );
-              const results = await res.json();
+              const data = await res.json();
+              const results = data.features || [];
               if (!results.length) {
-                resultsEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0;">No results found.</div>`;
+                resultsEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0;">No results found. Try adding a city or state.</div>`;
                 return;
               }
-              resultsEl.innerHTML = results.map((r, i) => `
+              resultsEl.innerHTML = results.map((r, i) => {
+                const p = r.properties;
+                const name = p.name || p.street || 'Unknown';
+                const sub = [p.city || p.town || p.village, p.state, p.country].filter(Boolean).slice(0,2).join(', ');
+                return `
                 <div data-idx="${i}" style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;
                   margin-top:6px;cursor:pointer;background:rgba(255,255,255,0.03);">
-                  <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;">${r.display_name.split(',')[0]}</div>
-                  <div style="font-size:11px;color:var(--muted);margin-top:2px;">${r.display_name.split(',').slice(1,3).join(',').trim()}</div>
-                </div>
-              `).join('');
+                  <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;">${name}</div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
+                </div>`;
+              }).join('');
 
-              // Store results for click handler
               resultsEl._geocodeResults = results;
 
               resultsEl.querySelectorAll('[data-idx]').forEach(el => {
                 el.addEventListener('click', () => {
                   const r = resultsEl._geocodeResults[parseInt(el.dataset.idx)];
-                  chosenLatLng = { lat: parseFloat(r.lat), lng: parseFloat(r.lon) };
+                  chosenLatLng = { lat: r.geometry.coordinates[1], lng: r.geometry.coordinates[0] };
 
                   // Drop pin and pan map
                   if (droppedPin) mapInstance.removeLayer(droppedPin);
@@ -3457,25 +3460,28 @@ const App = (() => {
       resultsEl.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:6px 0;">Searching...</div>`;
       geocodeDebounce = setTimeout(async () => {
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`, {
-            headers: { 'Accept-Language': 'en', 'User-Agent': 'TheStreetApp/1.0' }
-          });
-          const results = await res.json();
-          if (!results.length) { resultsEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:6px 0;">No results.</div>`; return; }
-          resultsEl.innerHTML = results.map((r, i) => `
+          const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lang=en`);
+          const data = await res.json();
+          const results = data.features || [];
+          if (!results.length) { resultsEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:6px 0;">No results. Try adding a city or state.</div>`; return; }
+          resultsEl.innerHTML = results.map((r, i) => {
+            const p = r.properties;
+            const name = p.name || p.street || 'Unknown';
+            const sub = [p.city || p.town || p.village, p.state, p.country].filter(Boolean).slice(0,2).join(', ');
+            return `
             <div data-idx="${i}" style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;margin-top:6px;cursor:pointer;background:rgba(255,255,255,0.03);">
-              <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;">${r.display_name.split(',')[0]}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px;">${r.display_name.split(',').slice(1,3).join(',').trim()}</div>
-            </div>
-          `).join('');
+              <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;">${name}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
+            </div>`;
+          }).join('');
           resultsEl._results = results;
           resultsEl.querySelectorAll('[data-idx]').forEach(el => {
             el.addEventListener('click', () => {
               const r = resultsEl._results[parseInt(el.dataset.idx)];
-              chosenLatLng = { lat: parseFloat(r.lat), lng: parseFloat(r.lon) };
-              const placeName = r.display_name.split(',')[0];
+              chosenLatLng = { lat: r.geometry.coordinates[1], lng: r.geometry.coordinates[0] };
+              const placeName = r.properties.name || r.properties.street || '';
               backdrop.querySelector('#sc-name').value = placeName;
-              backdrop.querySelector('#sc-location-label').textContent = r.display_name.split(',').slice(0,3).join(',');
+              const p2 = r.properties; backdrop.querySelector('#sc-location-label').textContent = [p2.name||p2.street, p2.city||p2.town, p2.state].filter(Boolean).join(', ');
               backdrop.querySelector('#sc-step-search').style.display = 'none';
               backdrop.querySelector('#sc-step-confirm').style.display = 'block';
               backdrop.querySelector('#btn-submit-court').style.display = 'block';
