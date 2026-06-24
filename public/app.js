@@ -1390,16 +1390,15 @@ const App = (() => {
 
         <!-- VS matchup -->
         <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:14px;position:relative;">
-          <div class="${cLoserClass}" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.challenger_crew_id})">
+          <div class="${cIsWinner && isFinal ? 'wire-winner' : cLoserClass}" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.challenger_crew_id})">
             ${crewAvatar(m.challenger_crew_id, m.challenger_name, cColor, 40)}
             <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;text-align:right;${cWinStyle || 'color:var(--text);'}">${m.challenger_name}${cIsWinner && isFinal ? ' 🏆' : ''}</div>
           </div>
           <div style="${vsStyle}">VS</div>
-          <div class="${dLoserClass}" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.defender_crew_id})">
+          <div class="${dIsWinner && isFinal ? 'wire-winner' : dLoserClass}" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.defender_crew_id})">
             ${crewAvatar(m.defender_crew_id, m.defender_name, dColor, 40)}
             <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;text-align:left;${dWinStyle || 'color:var(--text);'}">${m.defender_name}${dIsWinner && isFinal ? ' 🏆' : ''}</div>
           </div>
-          ${isFinal && winnerId ? `<div class="wire-stamp">BODIED</div>` : ''}
         </div>
 
         ${m.x_message ? `
