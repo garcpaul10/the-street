@@ -1640,9 +1640,41 @@ const App = (() => {
   // ── CREW PROFILE VIEW ──
   let crewProfileData = null;
 
+  // ── COSMETIC HELPERS ──
+  function jerseyStyle(name) {
+    if (!name) return '';
+    if (name.includes('Volt Runner'))  return 'border:2px solid var(--volt);box-shadow:0 0 10px rgba(68,255,34,0.25);';
+    if (name.includes('Legend Gold'))  return 'border:2px solid #ffb02e;box-shadow:0 0 10px rgba(255,176,46,0.25);';
+    if (name.includes('Classic White')) return 'border:2px solid rgba(240,240,240,0.4);';
+    if (name.includes('Blacktop Black')) return 'border:2px solid rgba(80,80,90,0.6);';
+    return '';
+  }
+  function tagStyleCSS(name) {
+    if (!name) return '';
+    if (name.includes('Graffiti')) return "font-family:'Permanent Marker',cursive;color:var(--volt);text-shadow:0 0 12px rgba(68,255,34,0.5);";
+    if (name.includes('Drip'))     return "font-family:'Permanent Marker',cursive;letter-spacing:0.02em;";
+    if (name.includes('Crown'))    return "font-family:'Big Shoulders Display',sans-serif;font-weight:900;letter-spacing:0.12em;";
+    return '';
+  }
+  function tagStylePrefix(name) {
+    if (name && name.includes('Crown')) return '👑 ';
+    return '';
+  }
+  function flairBadge(name) {
+    if (!name) return '';
+    if (name.includes('Legend')) return `<span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:900;font-family:'Big Shoulders Display',sans-serif;letter-spacing:0.08em;background:rgba(255,176,46,0.18);color:#ffb02e;border:1px solid rgba(255,176,46,0.5);margin-left:6px;">👑 LEGEND</span>`;
+    if (name.includes('OG'))     return `<span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:900;font-family:'Big Shoulders Display',sans-serif;letter-spacing:0.08em;background:rgba(255,176,46,0.10);color:#ffb02e;border:1px solid rgba(255,176,46,0.3);margin-left:6px;">OG</span>`;
+    return '';
+  }
+  function courtBannerStyle(name) {
+    if (!name) return 'border-left:3px solid var(--border);';
+    if (name.includes('Volt Glow')) return 'border-left:3px solid var(--volt);box-shadow:-3px 0 10px rgba(68,255,34,0.3);';
+    return 'border-left:3px solid var(--volt);';
+  }
+
   function renderCrewProfile() {
     if (!crewProfileData) return `<div class="empty-state">LOADING...</div>`;
-    const { crew, roster, turf, achievements, matchHistory, record } = crewProfileData;
+    const { crew, roster, turf, achievements, matchHistory, record, equipped = {} } = crewProfileData;
     const [tierLabel, tierClass] = crewTier(crew.reputation_score);
     const isRival = state.myCrews.some(c => c.id !== crew.id);
 
@@ -1655,11 +1687,17 @@ const App = (() => {
     const h2hWins = h2h.filter(m => m.winner_crew_id === crew.id).length;
     const h2hLosses = h2h.filter(m => m.winner_crew_id !== crew.id && m.winner_crew_id !== null).length;
 
+    const _jersey = jerseyStyle(equipped.jersey);
+    const _tagCSS  = tagStyleCSS(equipped.tag_style);
+    const _tagPre  = tagStylePrefix(equipped.tag_style);
+    const _banner  = courtBannerStyle(equipped.court_banner);
+    const _flair   = flairBadge(equipped.profile_flair);
+
     return `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:14px;border-radius:6px;${_jersey}background:var(--bg2);">
         <div style="width:16px;height:16px;border-radius:50%;background:${crew.map_color_hex};flex-shrink:0;box-shadow:0 0 8px ${crew.map_color_hex}55;"></div>
         <div>
-          <div style="font-family:'Big Shoulders Display',sans-serif;font-size:22px;font-weight:900;">${crew.name}</div>
+          <div style="font-size:22px;font-weight:900;${_tagCSS || "font-family:'Big Shoulders Display',sans-serif;"}">${_tagPre}${crew.name}${_flair}</div>
           <div style="font-size:12px;color:var(--muted);">${crew.sport_type} · ${crew.age_class} · ${crew.gender_class}</div>
         </div>
       </div>
@@ -1687,7 +1725,7 @@ const App = (() => {
       ${turf.length ? `
         <div class="section-head">TURF HELD (${turf.length})</div>
         ${turf.map(c => `
-          <div class="card" style="padding:10px 14px;margin-bottom:6px;">
+          <div class="card" style="padding:10px 14px;margin-bottom:6px;${_banner}">
             <div class="card-title" style="font-size:13px;">${c.name}</div>
           </div>
         `).join('')}
@@ -2395,6 +2433,10 @@ const App = (() => {
                 </div>
                 ${item.item_type === 'rematch_clause' && owned ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Use from a resolved match card to force a rematch.</div>` : ''}
                 ${item.item_type === 'priority_booking' && owned ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Auto-applied on next tournament entry — no coins charged.</div>` : ''}
+                ${item.item_type === 'jersey' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Shows on your crew profile header. Equip to activate.</div>` : ''}
+                ${item.item_type === 'tag_style' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Changes your crew name style on your profile. Equip to activate.</div>` : ''}
+                ${item.item_type === 'profile_flair' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Badge shown next to your crew name on profiles. Equip to activate.</div>` : ''}
+                ${item.item_type === 'court_banner' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Decorates your turf listings on your crew profile. Equip to activate.</div>` : ''}
               </div>
               ${used ? `<span class="tag tag-muted">USED</span>` :
                 owned && item.is_consumable && item.item_type === 'priority_booking' ? `<span class="tag tag-volt">READY</span>` :
@@ -2751,7 +2793,7 @@ const App = (() => {
   // ── PLAYER PROFILE ──
   function renderPlayerProfile() {
     if (!activePlayerData) return `<div class="empty-state">LOADING...</div>`;
-    const { player, crews, recentMatches } = activePlayerData;
+    const { player, crews, recentMatches, crewFlair = {} } = activePlayerData;
     const winPct = player.total_appearances > 0 ? Math.round((player.wins / player.total_appearances) * 100) : 0;
     return `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -2772,7 +2814,7 @@ const App = (() => {
         <div class="card" style="margin-bottom:6px;border-left:3px solid ${c.map_color_hex};cursor:pointer;" onclick="App.viewCrewProfile(${c.id})">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div>
-              <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:14px;">${c.name}</div>
+              <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:14px;">${c.name}${flairBadge(crewFlair[c.id])}</div>
               <div style="font-size:11px;color:var(--muted);">${c.sport_type}</div>
             </div>
             ${c.is_boss ? `<span class="tag tag-volt">BOSS</span>` : ''}

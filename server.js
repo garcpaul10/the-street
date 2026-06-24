@@ -326,7 +326,16 @@ app.get('/api/players/:id', requireAuth, async (req, res) => {
      ORDER BY m.id DESC LIMIT 10`, [id]
   );
 
-  res.json({ player: user.rows[0], crews: crews.rows, recentMatches: recentMatches.rows });
+  const flairRows = await pool.query(
+    `SELECT ci.crew_id, si.name FROM crew_inventory ci
+     JOIN store_items si ON si.id = ci.item_id
+     WHERE ci.equipped = TRUE AND si.item_type = 'profile_flair'
+       AND ci.crew_id IN (SELECT crew_id FROM crew_rosters WHERE user_id = $1)`, [id]
+  );
+  const crewFlair = {};
+  for (const f of flairRows.rows) crewFlair[f.crew_id] = f.name;
+
+  res.json({ player: user.rows[0], crews: crews.rows, recentMatches: recentMatches.rows, crewFlair });
 });
 
 // Season leaderboard
@@ -1100,10 +1109,18 @@ app.get('/api/crews/:id/profile', requireAuth, async (req, res) => {
   const wins = matchHistory.rows.filter(m => m.winner_crew_id === parseInt(id)).length;
   const losses = matchHistory.rows.filter(m => m.status === 'resolved' && m.winner_crew_id !== parseInt(id)).length;
 
+  const equipped = await pool.query(
+    `SELECT si.item_type, si.name FROM crew_inventory ci
+     JOIN store_items si ON si.id = ci.item_id
+     WHERE ci.crew_id = $1 AND ci.equipped = TRUE`, [id]
+  );
+  const equippedMap = {};
+  for (const e of equipped.rows) equippedMap[e.item_type] = e.name;
+
   res.json({
     crew: crew.rows[0], roster: roster.rows, turf: turf.rows,
     achievements: achievements.rows, matchHistory: matchHistory.rows,
-    record: { wins, losses }
+    record: { wins, losses }, equipped: equippedMap
   });
 });
 
