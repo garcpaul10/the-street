@@ -1049,7 +1049,7 @@ const App = (() => {
     return `
       <div class="section-head">
         CALL-OUTS — ${crew.name}
-        <button class="btn btn-volt btn-sm" style="float:right;margin-top:-4px;" onclick="App.nav('callout')">+ ISSUE CALL-OUT</button>
+        ${crew.boss_id === state.user?.id ? `<button class="btn btn-volt btn-sm" style="float:right;margin-top:-4px;" onclick="App.nav('callout')">+ ISSUE CALL-OUT</button>` : ''}
       </div>
 
       ${pending.length ? `<div style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;letter-spacing:0.15em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">INCOMING (${pending.length})</div>${pending.map(m => matchCard(m, m.defender_crew_id === state.activeCrewId)).join('')}` : ''}
@@ -1075,6 +1075,18 @@ const App = (() => {
   function renderCallout() {
     const crew = state.myCrews.find(c => c.id === state.activeCrewId);
     if (!crew) return `<div class="empty-state">BUILD A CREW FIRST.</div>`;
+    const isBoss = crew.boss_id === state.user?.id;
+    if (!isBoss) return `
+      <div class="section-head">ISSUE A CALL-OUT</div>
+      <div class="card" style="text-align:center;padding:32px 20px;">
+        <div style="font-size:32px;margin-bottom:12px;">🔒</div>
+        <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:18px;margin-bottom:8px;">BOSS ONLY</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          Only the crew boss can issue call-outs.<br>
+          Talk to <strong style="color:var(--text);">${crew.boss_username || 'your boss'}</strong> if you want to run it.
+        </div>
+      </div>
+    `;
     const publicCourts = state.courts.filter(c => c.type === 'public');
 
     return `
