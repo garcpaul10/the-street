@@ -1352,11 +1352,22 @@ const App = (() => {
         const el = document.getElementById('map-container');
         if (!el) return;
 
-        const center = courts.length
+        const fallback = courts.length
           ? [courts[0].latitude, courts[0].longitude]
           : [40.7305, -74.002];
 
-        mapInstance = L.map('map-container', { zoomControl: true }).setView(center, 14);
+        mapInstance = L.map('map-container', { zoomControl: true }).setView(fallback, 13);
+
+        // Try to center on user's location
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude } = pos.coords;
+              mapInstance.setView([latitude, longitude], 14);
+            },
+            () => {} // denied or unavailable — stay on fallback
+          );
+        }
 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
           attribution: '© OpenStreetMap © CartoDB',
