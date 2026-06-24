@@ -357,16 +357,36 @@ app.post('/api/crews/:id/transfer-boss', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// Leave a crew (non-boss members only)
+// Leave a crew (non-boss members only) — costs 25 rep
 app.delete('/api/crews/:id/roster', requireAuth, async (req, res) => {
   const crewId = req.params.id;
+  const userId = req.session.userId;
+
   const crew = await pool.query('SELECT boss_id FROM crews WHERE id = $1', [crewId]);
   if (!crew.rows.length) return res.status(404).json({ error: 'Crew not found.' });
-  if (crew.rows[0].boss_id === req.session.userId) {
-    return res.status(400).json({ error: 'Boss cannot leave — transfer leadership first.' });
+  if (crew.rows[0].boss_id === userId) {
+    return res.status(400).json({ error: 'You\'re the boss — transfer leadership before leaving.' });
   }
-  await pool.query('DELETE FROM crew_rosters WHERE crew_id = $1 AND user_id = $2', [crewId, req.session.userId]);
-  res.json({ success: true });
+
+  // Block if in a pending or active match lineup for this crew
+  const activeLineup = await pool.query(
+    `SELECT m.id FROM match_lineups ml
+     JOIN matches m ON m.id = ml.match_id
+     WHERE ml.user_id = $1 AND ml.crew_id = $2
+       AND m.status IN ('negotiating','locked','active','disputed')`,
+    [userId, crewId]
+  );
+  if (activeLineup.rows.length) {
+    return res.status(400).json({ error: 'You\'re locked into an active match. Finish it before leaving.' });
+  }
+
+  // Deduct 25 rep from the user's player stats
+  await pool.query(
+    `UPDATE player_stats SET reputation = GREATEST(0, COALESCE(reputation, 0) - 25) WHERE user_id = $1`,
+    [userId]
+  );
+  await pool.query('DELETE FROM crew_rosters WHERE crew_id = $1 AND user_id = $2', [crewId, userId]);
+  res.json({ success: true, rep_lost: 25 });
 });
 
 // Player profile (by user ID)
@@ -376,7 +396,8 @@ app.get('/api/players/:id', requireAuth, async (req, res) => {
     `SELECT u.id, u.username, u.tier,
             COALESCE(ps.total_appearances, 0) AS total_appearances,
             COALESCE(ps.wins, 0) AS wins,
-            COALESCE(ps.losses, 0) AS losses
+            COALESCE(ps.losses, 0) AS losses,
+            COALESCE(ps.reputation, 100) AS reputation
      FROM users u
      LEFT JOIN player_stats ps ON ps.user_id = u.id
      WHERE u.id = $1`, [id]

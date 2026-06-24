@@ -1027,10 +1027,10 @@ const App = (() => {
     });
 
     document.getElementById('btn-leave-crew')?.addEventListener('click', async () => {
-      if (!confirm('Leave this crew? You\'ll need to be re-added by the boss.')) return;
+      if (!confirm('Leave this crew?\n\n⚠️ You will lose 25 REP. You\'ll need to be re-added by the boss to rejoin.')) return;
       try {
         await api('DELETE', `/api/crews/${crewDetailData.crew.id}/roster`);
-        toast('YOU LEFT THE CREW');
+        toast('YOU LEFT THE CREW — 25 REP LOST');
         await loadAppData();
         show('crews');
       } catch(e) { toast(e.message); }
@@ -2871,6 +2871,7 @@ const App = (() => {
       </div>
 
       <div class="card">
+        <div class="stat-row"><span class="stat-label">Reputation</span><span class="stat-value" style="color:var(--amber)">${player.reputation ?? 100} REP</span></div>
         <div class="stat-row"><span class="stat-label">Appearances</span><span class="stat-value">${player.total_appearances}</span></div>
         <div class="stat-row"><span class="stat-label">Wins</span><span class="stat-value" style="color:var(--volt)">${player.wins}</span></div>
         <div class="stat-row"><span class="stat-label">Losses</span><span class="stat-value" style="color:var(--red)">${player.losses}</span></div>

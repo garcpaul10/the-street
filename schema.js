@@ -281,6 +281,8 @@ async function initSchema() {
     WHERE phone_number NOT LIKE '+%'
   `);
 
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS reputation INTEGER NOT NULL DEFAULT 100`);
+
   // Normalize sport_type to lowercase
   await pool.query(`UPDATE crews SET sport_type = LOWER(sport_type) WHERE sport_type != LOWER(sport_type)`);
 
