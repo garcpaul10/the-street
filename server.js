@@ -47,17 +47,26 @@ app.get('/api/public/today-matches', async (req, res) => {
 
 // ── AUTH ──
 
+function normalizePhone(raw) {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('1') && digits.length === 11) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (raw.trim().startsWith('+')) return raw.trim();
+  return `+${digits}`;
+}
+
 // Step 1: send OTP via Twilio Verify
 app.post('/api/auth/send-otp', async (req, res) => {
   const { phone } = req.body;
   if (!phone || phone.trim().length < 7) {
     return res.status(400).json({ error: 'Valid phone number required' });
   }
+  const e164 = normalizePhone(phone);
   try {
     await twilioClient.verify.v2
       .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verifications.create({ to: phone.trim(), channel: 'sms' });
-    res.json({ success: true });
+      .verifications.create({ to: e164, channel: 'sms' });
+    res.json({ success: true, normalizedPhone: e164 });
   } catch (err) {
     console.error('Twilio send-otp error:', err.message);
     res.status(500).json({ error: 'Failed to send verification code. Check your number and try again.' });
@@ -67,11 +76,12 @@ app.post('/api/auth/send-otp', async (req, res) => {
 // Step 2: verify OTP via Twilio Verify
 app.post('/api/auth/verify-otp', async (req, res) => {
   const { phone, code } = req.body;
+  const e164 = normalizePhone(phone);
   let check;
   try {
     check = await twilioClient.verify.v2
       .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({ to: phone.trim(), code: code.trim() });
+      .verificationChecks.create({ to: e164, code: code.trim() });
   } catch (err) {
     console.error('Twilio verify-otp error:', err.message);
     return res.status(400).json({ error: 'Invalid or expired code' });
@@ -81,14 +91,14 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   }
 
   // Check if user exists
-  const existing = await pool.query('SELECT id, username FROM users WHERE phone_number = $1', [phone.trim()]);
+  const existing = await pool.query('SELECT id, username FROM users WHERE phone_number = $1', [e164]);
   if (existing.rows.length > 0) {
     req.session.userId = existing.rows[0].id;
     return res.json({ success: true, newUser: false, username: existing.rows[0].username });
   }
 
   // New user — need onboarding
-  req.session.pendingPhone = phone.trim();
+  req.session.pendingPhone = e164;
   res.json({ success: true, newUser: true });
 });
 
