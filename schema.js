@@ -282,6 +282,19 @@ async function initSchema() {
   `);
 
   await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS reputation INTEGER NOT NULL DEFAULT 100`);
+  await pool.query(`ALTER TABLE crews ADD COLUMN IF NOT EXISTS logo_url TEXT NULL`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS crew_trophy_case (
+      id SERIAL PRIMARY KEY,
+      crew_id INTEGER REFERENCES crews(id) ON DELETE CASCADE,
+      defeated_crew_id INTEGER REFERENCES crews(id) ON DELETE SET NULL,
+      defeated_crew_name VARCHAR(100) NOT NULL,
+      defeated_logo_url TEXT,
+      win_count INTEGER NOT NULL DEFAULT 1,
+      last_win_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(crew_id, defeated_crew_id)
+    )
+  `);
 
   // Normalize sport_type to lowercase
   await pool.query(`UPDATE crews SET sport_type = LOWER(sport_type) WHERE sport_type != LOWER(sport_type)`);

@@ -934,13 +934,18 @@ const App = (() => {
     const turfCourts = state.courts.filter(c => c.holding_crew_id === crew.id);
 
     return `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <div style="width:14px;height:14px;border-radius:50%;background:${crew.map_color_hex};flex-shrink:0;"></div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+        <div style="position:relative;">
+          ${crewAvatar(crew.id, crew.name, crew.map_color_hex, 52)}
+          ${isMyBoss ? `<label for="logo-upload" style="position:absolute;bottom:-2px;right:-2px;width:18px;height:18px;background:var(--volt);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;" title="Upload logo">📷</label>
+          <input type="file" id="logo-upload" accept="image/*" style="display:none;">` : ''}
+        </div>
         <div>
           <div style="font-family:'Big Shoulders Display',sans-serif;font-size:22px;font-weight:900;letter-spacing:0.05em;">${crew.name}</div>
           <div style="font-size:12px;color:var(--muted);">${crew.sport_type} · ${crew.age_class} · ${crew.gender_class}</div>
         </div>
       </div>
+      <div id="logo-msg" style="margin-bottom:8px;"></div>
 
       <div class="card">
         <div class="stat-row"><span class="stat-label">Tier</span><span class="tier-badge ${tierClass}">${tierLabel}</span></div>
@@ -989,6 +994,42 @@ const App = (() => {
   }
 
   function bindCrewDetail() {
+    // Logo upload
+    document.getElementById('logo-upload')?.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const msgEl = document.getElementById('logo-msg');
+      msgEl.innerHTML = '<div style="font-size:11px;color:var(--muted);">Uploading...</div>';
+      try {
+        const logo_url = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const reader = new FileReader();
+          reader.onload = ev => {
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const size = 200;
+              canvas.width = canvas.height = size;
+              const ctx = canvas.getContext('2d');
+              const scale = Math.max(size / img.width, size / img.height);
+              const w = img.width * scale, h = img.height * scale;
+              ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+              resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.onerror = reject;
+            img.src = ev.target.result;
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        await api('POST', `/api/crews/${crewDetailData.crew.id}/logo`, { logo_url });
+        msgEl.innerHTML = '<div class="msg-success">Logo updated!</div>';
+        // Reload the avatar image
+        document.querySelectorAll(`img[src="/api/crews/${crewDetailData.crew.id}/logo"]`).forEach(img => {
+          img.src = img.src + '?t=' + Date.now();
+        });
+      } catch(e) { msgEl.innerHTML = `<div class="msg-error">${e.message}</div>`; }
+    });
+
     document.getElementById('btn-invite-player')?.addEventListener('click', async () => {
       const handle = document.getElementById('invite-handle').value.trim();
       const msgEl = document.getElementById('invite-msg');
@@ -1279,48 +1320,80 @@ const App = (() => {
   }
 
   function wireCard(m, isUpcoming) {
-    const vsLine = `<span style="color:${m.challenger_color || 'var(--volt)'}">●</span> ${m.challenger_name} <span class="vs-sep">VS</span> <span style="color:${m.defender_color || 'var(--muted)'}">●</span> ${m.defender_name}`;
-    const statusColors = { negotiating:'tag-amber', locked:'tag-volt', active:'tag-volt', disputed:'tag-red', resolved:'tag-green', voided:'tag-muted' };
+    const cColor = m.challenger_color || '#44FF22';
+    const dColor = m.defender_color || '#8b4dff';
+
+    const statusMeta = {
+      negotiating: { label: 'NEGOTIATING', accent: 'var(--amber)' },
+      locked:      { label: '⚡ LOCKED IN', accent: 'var(--volt)' },
+      active:      { label: '🔴 LIVE NOW',  accent: 'var(--red)' },
+      disputed:    { label: '⚠️ DISPUTED',  accent: 'var(--red)' },
+      resolved:    { label: '✓ FINAL',      accent: '#44FF22' },
+      voided:      { label: 'VOIDED',       accent: 'var(--muted)' },
+    };
+    const { label: statusLabel, accent } = statusMeta[m.status] || { label: m.status.toUpperCase(), accent: 'var(--muted)' };
 
     let timeLabel = '';
     if (m.scheduled_time) {
       const d = new Date(m.scheduled_time);
       const now = new Date();
       const diffH = (d - now) / 3600000;
-      if (diffH < 0) timeLabel = '';
-      else if (diffH < 1) timeLabel = `<span style="color:var(--volt);font-weight:900;">TONIGHT — ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</span>`;
-      else if (diffH < 24) timeLabel = `Today ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
-      else timeLabel = d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' · ' + d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+      if (diffH >= 0 && diffH < 1)       timeLabel = `TONIGHT · ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
+      else if (diffH >= 1 && diffH < 24)  timeLabel = `TODAY · ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
+      else if (diffH >= 24)               timeLabel = `${d.toLocaleDateString([],{month:'short',day:'numeric'})} · ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
     }
 
     return `
-      <div class="wire-card">
-        <div class="match-vs" style="font-size:15px;">${vsLine}</div>
-        <div style="font-size:11px;color:var(--muted);margin:4px 0 8px;">
-          ${m.court_name || 'Unknown court'} · ${m.format_type}
-          ${m.wager_amount > 0 ? ` · <span style="color:var(--volt)">⚡ ${m.wager_amount} ON THE LINE</span>` : ''}
-          ${timeLabel ? ` · ${timeLabel}` : ''}
+      <div class="wire-card" style="border-left:3px solid ${accent};">
+
+        <!-- Header row: status + hype -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <span style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;font-weight:900;letter-spacing:0.12em;color:${accent};">${statusLabel}</span>
+          ${isUpcoming
+            ? `<button class="hype-btn" onclick="App.hype(${m.id}, this)">🔥 <span class="hype-count">${m.hype_count || 0}</span></button>`
+            : `<span style="font-size:12px;color:var(--muted);">🔥 ${m.hype_count || 0}</span>`}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <span class="tag ${statusColors[m.status] || 'tag-muted'}">${m.status.toUpperCase()}</span>
-            ${m.status === 'resolved' && m.winner_name ? `<span class="tag tag-green">W: ${m.winner_name}</span>` : ''}
-            ${m.status === 'voided' ? `<span class="tag tag-muted">VOIDED</span>` : ''}
+
+        <!-- VS matchup -->
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:14px;">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.challenger_crew_id})">
+            ${crewAvatar(m.challenger_crew_id, m.challenger_name, cColor, 40)}
+            <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;color:var(--text);text-align:right;">${m.challenger_name}</div>
           </div>
-          ${isUpcoming ? `
-            <button class="hype-btn" onclick="App.hype(${m.id}, this)">
-              🔥 <span class="hype-count">${m.hype_count || 0}</span>
-            </button>
-          ` : `<span style="color:var(--muted);font-size:11px;">🔥 ${m.hype_count || 0}</span>`}
+          <div style="font-family:'Big Shoulders Display',sans-serif;font-size:22px;font-weight:900;color:var(--muted);text-align:center;padding:0 4px;">VS</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.defender_crew_id})">
+            ${crewAvatar(m.defender_crew_id, m.defender_name, dColor, 40)}
+            <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;color:var(--text);text-align:left;">${m.defender_name}</div>
+          </div>
         </div>
-        ${m.x_message ? `
-          <div style="margin-top:6px;font-size:11px;color:var(--muted);font-style:italic;border-top:1px solid var(--border);padding-top:6px;">${m.x_message}</div>
+
+        ${m.status === 'resolved' && m.winner_name ? `
+          <div style="text-align:center;font-family:'Big Shoulders Display',sans-serif;font-size:12px;font-weight:900;letter-spacing:0.1em;color:var(--volt);background:rgba(68,255,34,0.08);border:1px solid rgba(68,255,34,0.2);border-radius:4px;padding:5px;margin-bottom:12px;">
+            🏆 ${m.winner_name.toUpperCase()} WIN
+          </div>
         ` : ''}
-        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-outline btn-sm" style="font-size:10px;" onclick="App.navMatchDetail(${m.id})">VIEW MATCH →</button>
-          <button class="btn btn-outline btn-sm" style="font-size:10px;" onclick="App.viewCrewProfile(${m.challenger_crew_id})">${m.challenger_name}</button>
-          <button class="btn btn-outline btn-sm" style="font-size:10px;" onclick="App.viewCrewProfile(${m.defender_crew_id})">${m.defender_name}</button>
+
+        ${m.x_message ? `
+          <div style="font-size:11px;color:var(--muted);font-style:italic;border-left:2px solid var(--border);padding-left:8px;margin-bottom:12px;">"${m.x_message}"</div>
+        ` : ''}
+
+        <!-- Meta row -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+          <span style="font-size:11px;color:var(--muted);">${m.court_name || 'TBD'}</span>
+          <span style="color:var(--border);font-size:10px;">·</span>
+          <span style="font-size:11px;color:var(--muted);">${m.format_type}</span>
+          ${m.wager_amount > 0 ? `
+            <span style="color:var(--border);font-size:10px;">·</span>
+            <span style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;font-weight:900;color:var(--volt);">⚡ ${m.wager_amount} COINS</span>
+          ` : ''}
+          ${timeLabel ? `
+            <span style="color:var(--border);font-size:10px;">·</span>
+            <span style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;font-weight:900;color:var(--amber);">${timeLabel}</span>
+          ` : ''}
         </div>
+
+        <!-- Action -->
+        <button class="btn btn-volt btn-full" style="font-size:12px;" onclick="App.navMatchDetail(${m.id})">VIEW MATCH →</button>
       </div>
     `;
   }
@@ -1600,6 +1673,17 @@ const App = (() => {
       });
   }
 
+  // ── CREW AVATAR HELPER ──
+  function crewAvatar(crewId, crewName, colorHex, size = 36) {
+    const initials = (crewName || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const fs = Math.floor(size * 0.36);
+    return `
+      <div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;background:${colorHex}22;border:2px solid ${colorHex};overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:${fs}px;color:${colorHex};position:absolute;">${initials}</span>
+        <img src="/api/crews/${crewId}/logo" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:50%;" onerror="this.style.display='none'">
+      </div>`;
+  }
+
   // ── QUESTS VIEW ──
   let questsData = [];
 
@@ -1743,10 +1827,11 @@ const App = (() => {
     const _tagPre  = tagStylePrefix(equipped.tag_style);
     const _banner  = courtBannerStyle(equipped.court_banner);
     const _flair   = flairBadge(equipped.profile_flair);
+    const trophyCase = crewProfileData.trophyCase || [];
 
     return `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:14px;border-radius:6px;${_jersey}background:var(--bg2);">
-        <div style="width:16px;height:16px;border-radius:50%;background:${crew.map_color_hex};flex-shrink:0;box-shadow:0 0 8px ${crew.map_color_hex}55;"></div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:14px;border-radius:6px;${_jersey}background:var(--bg2);">
+        ${crewAvatar(crew.id, crew.name, crew.map_color_hex, 52)}
         <div>
           <div style="font-size:22px;font-weight:900;${_tagCSS || "font-family:'Big Shoulders Display',sans-serif;"}">${_tagPre}${crew.name}${_flair}</div>
           <div style="font-size:12px;color:var(--muted);">${crew.sport_type} · ${crew.age_class} · ${crew.gender_class}</div>
@@ -1818,6 +1903,20 @@ const App = (() => {
       `).join('') || '<div class="empty-state" style="padding:12px 0;">No match history yet.</div>'}
 
       <div style="margin-top:16px;display:flex;gap:8px;">
+        ${trophyCase.length ? `
+          <div class="section-head" style="margin-bottom:12px;">🏆 TROPHY CASE</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+            ${trophyCase.map(t => `
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;">
+                <div style="position:relative;">
+                  ${crewAvatar(t.defeated_crew_id || 0, t.defeated_crew_name, '#868b8a', 44)}
+                  ${t.win_count > 1 ? `<div style="position:absolute;bottom:-4px;right:-4px;background:var(--volt);color:#0a0b0d;font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:9px;padding:1px 4px;border-radius:10px;">×${t.win_count}</div>` : ''}
+                </div>
+                <div style="font-size:9px;color:var(--muted);font-family:'Big Shoulders Display',sans-serif;font-weight:700;letter-spacing:0.05em;max-width:50px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.defeated_crew_name}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
         <button class="btn btn-volt btn-full" onclick="App.nav('callout')">⚡ CALL THEM OUT</button>
       </div>
     `;

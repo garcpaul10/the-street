@@ -277,6 +277,33 @@ app.post('/api/crews', requireAuth, async (req, res) => {
   }
 });
 
+// Serve crew logo as image
+app.get('/api/crews/:id/logo', async (req, res) => {
+  const crew = await pool.query('SELECT logo_url FROM crews WHERE id = $1', [req.params.id]);
+  if (!crew.rows.length || !crew.rows[0].logo_url) return res.status(404).end();
+  const dataUrl = crew.rows[0].logo_url;
+  const [header, data] = dataUrl.split(',');
+  const mimeType = (header.match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(Buffer.from(data, 'base64'));
+});
+
+// Upload crew logo (boss only)
+app.post('/api/crews/:id/logo', requireAuth, async (req, res) => {
+  const crewId = req.params.id;
+  const { logo_url } = req.body;
+  const crew = await pool.query('SELECT boss_id FROM crews WHERE id = $1', [crewId]);
+  if (!crew.rows.length || crew.rows[0].boss_id !== req.session.userId) {
+    return res.status(403).json({ error: 'Only the boss can update the crew logo.' });
+  }
+  if (!logo_url || !logo_url.startsWith('data:image/')) {
+    return res.status(400).json({ error: 'Invalid image.' });
+  }
+  await pool.query('UPDATE crews SET logo_url = $1 WHERE id = $2', [logo_url, crewId]);
+  res.json({ success: true });
+});
+
 app.get('/api/crews/search', requireAuth, async (req, res) => {
   const { q } = req.query;
   if (!q || q.trim().length < 2) return res.json({ crews: [] });
@@ -733,6 +760,21 @@ async function resolveMatch(m) {
   // Win streak
   await pool.query('UPDATE crews SET current_win_streak = current_win_streak + 1 WHERE id = $1', [winnerId]);
   await pool.query('UPDATE crews SET current_win_streak = 0 WHERE id = $1', [loserId]);
+
+  // Trophy case — snapshot loser's name and logo at time of win
+  const loserSnap = await pool.query('SELECT name, logo_url FROM crews WHERE id = $1', [loserId]);
+  if (loserSnap.rows.length) {
+    const { name: loserName, logo_url: loserLogo } = loserSnap.rows[0];
+    await pool.query(`
+      INSERT INTO crew_trophy_case (crew_id, defeated_crew_id, defeated_crew_name, defeated_logo_url, win_count, last_win_at)
+      VALUES ($1, $2, $3, $4, 1, NOW())
+      ON CONFLICT (crew_id, defeated_crew_id) DO UPDATE SET
+        win_count = crew_trophy_case.win_count + 1,
+        defeated_crew_name = $3,
+        defeated_logo_url = $4,
+        last_win_at = NOW()
+    `, [winnerId, loserId, loserName, loserLogo]);
+  }
 
   // Streak bonuses
   const winner = await pool.query('SELECT current_win_streak FROM crews WHERE id = $1', [winnerId]);
@@ -1262,10 +1304,15 @@ app.get('/api/crews/:id/profile', requireAuth, async (req, res) => {
   const equippedMap = {};
   for (const e of equipped.rows) equippedMap[e.item_type] = e.name;
 
+  const trophyCase = await pool.query(
+    `SELECT * FROM crew_trophy_case WHERE crew_id = $1 ORDER BY win_count DESC`, [id]
+  );
+
   res.json({
     crew: crew.rows[0], roster: roster.rows, turf: turf.rows,
     achievements: achievements.rows, matchHistory: matchHistory.rows,
-    record: { wins, losses }, equipped: equippedMap
+    record: { wins, losses }, equipped: equippedMap,
+    trophyCase: trophyCase.rows
   });
 });
 
