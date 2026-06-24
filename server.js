@@ -239,7 +239,8 @@ app.get('/api/auth/me', async (req, res) => {
 // ── CREWS ──
 
 app.post('/api/crews', requireAuth, async (req, res) => {
-  const { name, sport_type, age_class, gender_class, map_color_hex } = req.body;
+  const { name, age_class, gender_class, map_color_hex } = req.body;
+  const sport_type = (req.body.sport_type || '').toLowerCase().trim();
 
   if (containsProfanity(name)) {
     return res.status(400).json({ error: 'Crew name isn\'t allowed. Choose another.' });
@@ -247,12 +248,15 @@ app.post('/api/crews', requireAuth, async (req, res) => {
 
   const color = map_color_hex || '#44FF22';
   try {
+    // Block if already a member of any crew in this sport
     const existing = await pool.query(
-      `SELECT id FROM crews WHERE boss_id = $1 AND sport_type = $2`,
+      `SELECT c.id FROM crew_rosters cr
+       JOIN crews c ON c.id = cr.crew_id
+       WHERE cr.user_id = $1 AND LOWER(c.sport_type) = $2`,
       [req.session.userId, sport_type]
     );
     if (existing.rows.length) {
-      return res.status(400).json({ error: `You already run a ${sport_type} crew. A boss can only lead one crew per sport.` });
+      return res.status(400).json({ error: `You're already on a ${sport_type} crew. You can only be on one crew per sport.` });
     }
 
     const result = await pool.query(

@@ -281,6 +281,9 @@ async function initSchema() {
     WHERE phone_number NOT LIKE '+%'
   `);
 
+  // Normalize sport_type to lowercase
+  await pool.query(`UPDATE crews SET sport_type = LOWER(sport_type) WHERE sport_type != LOWER(sport_type)`);
+
   console.log('Schema initialized');
 }
 

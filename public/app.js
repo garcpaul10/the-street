@@ -850,9 +850,9 @@ const App = (() => {
         <div class="form-field">
           <label class="form-label">Sport</label>
           <select class="form-select" id="cc-sport">
-            <option value="Basketball">Basketball</option>
-            <option value="Soccer">Soccer</option>
-            <option value="Football">Football</option>
+            <option value="basketball">Basketball</option>
+            <option value="soccer">Soccer</option>
+            <option value="football">Football</option>
             <option value="Handball">Handball</option>
             <option value="Tennis">Tennis</option>
             <option value="Volleyball">Volleyball</option>
