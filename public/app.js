@@ -2393,6 +2393,13 @@ const App = (() => {
   }
 
   // ── THE STORE ──
+  const UNLOCK_LABELS = {
+    win_streak_10:    'Win 10 matches in a row',
+    hold_3_courts:    'Hold 3 courts at the same time',
+    defender_wins_3:  'Win 3 times as the called-out crew',
+    quests_claimed_5: 'Complete 5 quests',
+  };
+
   const ITEM_TYPE_LABELS = {
     jersey: '👕 JERSEYS',
     tag_style: '🎨 TAG STYLES',
@@ -2420,29 +2427,36 @@ const App = (() => {
         <div class="section-head" style="font-size:11px;margin-top:16px;">${ITEM_TYPE_LABELS[type] || type.toUpperCase()}</div>
         ${typeItems.map(item => {
           const invEntry = inventory.find(i => i.item_id === item.id);
+          const isEarned = item.unlock_type === 'achievement';
           const owned = invEntry && (!item.is_consumable || !invEntry.used_at);
-          const locked = crew && crew.reputation_score < item.min_reputation;
+          const locked = !owned && (isEarned || (crew && crew.reputation_score < item.min_reputation));
           const equipped = invEntry && invEntry.equipped;
           const used = invEntry && item.is_consumable && invEntry.used_at;
           return `
-            <div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:12px;${owned ? 'border-left:3px solid var(--volt);' : used ? 'opacity:0.5;' : ''}">
+            <div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:12px;${equipped ? 'border-left:3px solid var(--volt);' : used ? 'opacity:0.5;' : ''}">
               <div style="flex:1;">
-                <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;">${item.name}</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div style="font-family:'Big Shoulders Display',sans-serif;font-weight:900;font-size:13px;">${item.name}</div>
+                  ${isEarned ? `<span style="font-size:9px;font-weight:900;font-family:'Big Shoulders Display',sans-serif;letter-spacing:0.08em;padding:2px 5px;border-radius:3px;background:rgba(255,176,46,0.12);color:#ffb02e;border:1px solid rgba(255,176,46,0.3);">EARNED</span>` : ''}
+                </div>
                 <div style="font-size:11px;color:var(--muted);margin-top:2px;">
-                  ${item.min_reputation > 0 ? `REP ${item.min_reputation}+ · ` : ''}${item.is_consumable ? 'Single-use · ' : ''}⚡ ${item.cost_coins}
+                  ${isEarned
+                    ? (owned ? 'Unlocked · Equip to activate' : (UNLOCK_LABELS[item.unlock_requirement] || ''))
+                    : `${item.min_reputation > 0 ? `REP ${item.min_reputation}+ · ` : ''}${item.is_consumable ? 'Single-use · ' : ''}⚡ ${item.cost_coins}`}
                 </div>
                 ${item.item_type === 'rematch_clause' && owned ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Use from a resolved match card to force a rematch.</div>` : ''}
                 ${item.item_type === 'priority_booking' && owned ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Auto-applied on next tournament entry — no coins charged.</div>` : ''}
-                ${item.item_type === 'jersey' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Shows on your crew profile header. Equip to activate.</div>` : ''}
-                ${item.item_type === 'tag_style' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Changes your crew name style on your profile. Equip to activate.</div>` : ''}
-                ${item.item_type === 'profile_flair' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Badge shown next to your crew name on profiles. Equip to activate.</div>` : ''}
-                ${item.item_type === 'court_banner' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Decorates your turf listings on your crew profile. Equip to activate.</div>` : ''}
+                ${!isEarned && item.item_type === 'jersey' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Shows on your crew profile header. Equip to activate.</div>` : ''}
+                ${!isEarned && item.item_type === 'tag_style' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Changes your crew name style on your profile. Equip to activate.</div>` : ''}
+                ${!isEarned && item.item_type === 'profile_flair' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Badge shown next to your crew name on profiles. Equip to activate.</div>` : ''}
+                ${!isEarned && item.item_type === 'court_banner' ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">Decorates your turf listings on your crew profile. Equip to activate.</div>` : ''}
               </div>
               ${used ? `<span class="tag tag-muted">USED</span>` :
                 owned && item.is_consumable && item.item_type === 'priority_booking' ? `<span class="tag tag-volt">READY</span>` :
                 owned && item.is_consumable ? `<button class="btn btn-outline btn-sm store-use-btn" data-inv-id="${invEntry.id}" data-item-type="${item.item_type}">USE</button>` :
-                owned && equipped ? `<span class="tag tag-volt">EQUIPPED</span>` :
+                owned && equipped ? `<button class="btn btn-outline btn-sm store-unequip-btn" data-inv-id="${invEntry.id}">UNEQUIP</button>` :
                 owned ? `<button class="btn btn-outline btn-sm store-equip-btn" data-inv-id="${invEntry.id}">EQUIP</button>` :
+                locked && isEarned ? `<span class="tag tag-muted">🔒 LOCKED</span>` :
                 locked ? `<span class="tag tag-muted">🔒 ${item.min_reputation} REP</span>` :
                 `<button class="btn btn-volt btn-sm store-buy-btn" data-item-id="${item.id}">BUY</button>`}
             </div>
@@ -2524,6 +2538,21 @@ const App = (() => {
         try {
           await api('POST', '/api/store/equip', { crew_id: crew.id, inventory_id: invId });
           toast('EQUIPPED!');
+          const invRes = await api('GET', `/api/store/inventory/${crew.id}`);
+          storeData.inventory = invRes.inventory;
+          const content = document.getElementById('main-content');
+          if (content) content.innerHTML = renderStore();
+          bindStoreContent();
+        } catch(e) { toast(e.message); }
+      });
+    });
+
+    document.querySelectorAll('.store-unequip-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const invId = parseInt(btn.dataset.invId);
+        try {
+          await api('POST', '/api/store/unequip', { crew_id: crew.id, inventory_id: invId });
+          toast('UNEQUIPPED');
           const invRes = await api('GET', `/api/store/inventory/${crew.id}`);
           storeData.inventory = invRes.inventory;
           const content = document.getElementById('main-content');

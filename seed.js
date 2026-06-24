@@ -97,6 +97,17 @@ async function seedData() {
     ON CONFLICT DO NOTHING;
   `);
 
+  // Earnable cosmetics — unlocked by achievement, never purchasable
+  await pool.query(`
+    INSERT INTO store_items (name, item_type, cost_coins, min_reputation, is_consumable, unlock_type, unlock_requirement)
+    VALUES
+      ('Unbeaten',          'profile_flair',  0, 0, false, 'achievement', 'win_streak_10'),
+      ('Territory',         'court_banner',   0, 0, false, 'achievement', 'hold_3_courts'),
+      ('Can''t Be Touched', 'jersey',         0, 0, false, 'achievement', 'defender_wins_3'),
+      ('Grind',             'tag_style',      0, 0, false, 'achievement', 'quests_claimed_5')
+    ON CONFLICT DO NOTHING;
+  `);
+
   console.log('Seed data inserted');
 }
 

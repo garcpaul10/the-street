@@ -251,6 +251,9 @@ async function initSchema() {
     );
   `);
 
+  await pool.query(`ALTER TABLE store_items ADD COLUMN IF NOT EXISTS unlock_type VARCHAR(20) NOT NULL DEFAULT 'purchase'`);
+  await pool.query(`ALTER TABLE store_items ADD COLUMN IF NOT EXISTS unlock_requirement VARCHAR(50) NULL`);
+
   console.log('Schema initialized');
 }
 

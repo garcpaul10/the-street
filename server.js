@@ -679,6 +679,9 @@ async function resolveMatch(m) {
   const turfCount = await pool.query('SELECT COUNT(*) FROM courts WHERE holding_crew_id = $1', [winnerId]);
   await updateQuestProgress(winnerId, 'hold_courts', parseInt(turfCount.rows[0].count), m);
 
+  // Check for earned cosmetics
+  await checkEarnedCosmetics(winnerId);
+
   // Advance tournament bracket or rotation queue
   if (m.tournament_id) {
     const tourn = await pool.query('SELECT bracket_type FROM tournaments WHERE id = $1', [m.tournament_id]);
@@ -688,6 +691,45 @@ async function resolveMatch(m) {
       } else if (m.tournament_round) {
         await advanceTournamentBracket(m.tournament_id, m.tournament_round);
       }
+    }
+  }
+}
+
+async function checkEarnedCosmetics(crewId) {
+  const items = await pool.query(`SELECT * FROM store_items WHERE unlock_type = 'achievement'`);
+  if (!items.rows.length) return;
+
+  const crew = await pool.query('SELECT current_win_streak FROM crews WHERE id = $1', [crewId]);
+  if (!crew.rows.length) return;
+  const streak = crew.rows[0].current_win_streak;
+
+  const turf = await pool.query(`SELECT COUNT(*) FROM courts WHERE holding_crew_id = $1 AND status = 'active'`, [crewId]);
+  const turfHeld = parseInt(turf.rows[0].count);
+
+  const defWins = await pool.query(
+    `SELECT COUNT(*) FROM matches WHERE defender_crew_id = $1 AND winner_crew_id = $1 AND status = 'resolved'`, [crewId]
+  );
+  const defenderWins = parseInt(defWins.rows[0].count);
+
+  const claimed = await pool.query(
+    `SELECT COUNT(*) FROM crew_quest_progress WHERE crew_id = $1 AND claimed = TRUE`, [crewId]
+  );
+  const questsClaimed = parseInt(claimed.rows[0].count);
+
+  for (const item of items.rows) {
+    const already = await pool.query(
+      'SELECT id FROM crew_inventory WHERE crew_id = $1 AND item_id = $2', [crewId, item.id]
+    );
+    if (already.rows.length) continue;
+
+    let unlocked = false;
+    if (item.unlock_requirement === 'win_streak_10'    && streak >= 10)       unlocked = true;
+    if (item.unlock_requirement === 'hold_3_courts'    && turfHeld >= 3)      unlocked = true;
+    if (item.unlock_requirement === 'defender_wins_3'  && defenderWins >= 3)  unlocked = true;
+    if (item.unlock_requirement === 'quests_claimed_5' && questsClaimed >= 5) unlocked = true;
+
+    if (unlocked) {
+      await pool.query('INSERT INTO crew_inventory (crew_id, item_id) VALUES ($1, $2)', [crewId, item.id]);
     }
   }
 }
@@ -1001,6 +1043,8 @@ app.post('/api/quests/:id/claim', requireAuth, async (req, res) => {
   await pool.query('UPDATE crews SET coin_balance = coin_balance + $1 WHERE id = $2', [reward, crew_id]);
   await pool.query('INSERT INTO coin_transactions (crew_id, amount, reason) VALUES ($1, $2, $3)',
     [crew_id, reward, 'quest_reward']);
+
+  await checkEarnedCosmetics(crew_id);
 
   res.json({ success: true, coins_earned: reward });
 });
@@ -1721,6 +1765,16 @@ app.post('/api/store/equip', requireAuth, async (req, res) => {
   `, [crew_id, inv.rows[0].item_type]);
 
   await pool.query('UPDATE crew_inventory SET equipped = TRUE WHERE id = $1', [inventory_id]);
+  res.json({ success: true });
+});
+
+app.post('/api/store/unequip', requireAuth, async (req, res) => {
+  const { crew_id, inventory_id } = req.body;
+  const inv = await pool.query(
+    'SELECT id FROM crew_inventory WHERE id = $1 AND crew_id = $2', [inventory_id, crew_id]
+  );
+  if (!inv.rows.length) return res.status(404).json({ error: 'Item not in inventory.' });
+  await pool.query('UPDATE crew_inventory SET equipped = FALSE WHERE id = $1', [inventory_id]);
   res.json({ success: true });
 });
 
