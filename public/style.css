@@ -957,18 +957,72 @@ body::after {
 
 /* ── WIRE CARD ── */
 .wire-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 55%), var(--bg2);
   border: 1px solid var(--border-soft);
   border-radius: var(--r-md);
   padding: 15px 16px;
   margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
   transition: transform 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out), border-color 0.25s;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 55%), var(--bg2);
 }
 .wire-card:hover {
   transform: translateY(-2px);
   border-color: var(--border-glow);
   box-shadow: var(--shadow-md);
+}
+
+/* ── LOCKED IN card ── cold electric */
+.wire-card--locked {
+  background: linear-gradient(160deg, #071a14 0%, #0a1020 100%);
+  border-color: rgba(68,255,34,0.25);
+  box-shadow: 0 0 0 1px rgba(68,255,34,0.06), inset 0 1px 0 rgba(68,255,34,0.06);
+}
+.wire-card--locked:hover { border-color: rgba(68,255,34,0.55); box-shadow: 0 4px 24px rgba(68,255,34,0.12); }
+
+/* ── LIVE NOW card ── hot urgent */
+.wire-card--live {
+  background: linear-gradient(160deg, #1c0909 0%, #0e0d12 100%);
+  border-color: rgba(255,60,60,0.35);
+  box-shadow: 0 0 0 1px rgba(255,60,60,0.08), inset 0 1px 0 rgba(255,60,60,0.06);
+  animation: livePulse 2.4s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255,60,60,0.08), 0 0 12px rgba(255,60,60,0.08); border-left-color: rgba(255,60,60,0.5); }
+  50%       { box-shadow: 0 0 0 1px rgba(255,60,60,0.08), 0 0 28px rgba(255,60,60,0.22); border-left-color: rgba(255,60,60,0.95); }
+}
+
+/* ── FINAL card ── dark aftermath */
+.wire-card--final {
+  background: linear-gradient(160deg, #0a0a0a 0%, #0d0d10 100%);
+  border-color: rgba(255,255,255,0.06);
+}
+.wire-card--final:hover { border-color: rgba(255,255,255,0.1); }
+
+/* loser side fades out */
+.wire-loser { opacity: 0.28; filter: grayscale(0.6); }
+
+/* BODIED stamp */
+.wire-stamp {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%) rotate(-22deg) scale(0.6);
+  font-family: 'Big Shoulders Display', sans-serif;
+  font-size: 18px; font-weight: 900;
+  letter-spacing: 0.15em;
+  color: #ff3c3c;
+  border: 2px solid #ff3c3c;
+  border-radius: 3px;
+  padding: 2px 7px;
+  opacity: 0;
+  pointer-events: none;
+  animation: stampIn 0.55s cubic-bezier(0.175,0.885,0.32,1.275) 0.3s forwards;
+  white-space: nowrap;
+  text-shadow: 0 0 8px rgba(255,60,60,0.5);
+}
+@keyframes stampIn {
+  0%   { opacity: 0; transform: translate(-50%,-50%) rotate(-28deg) scale(1.5); }
+  60%  { opacity: 0.9; }
+  100% { opacity: 0.7; transform: translate(-50%,-50%) rotate(-22deg) scale(1); }
 }
 
 /* ── HYPE BUTTON ── */

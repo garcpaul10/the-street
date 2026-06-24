@@ -1323,15 +1323,42 @@ const App = (() => {
     const cColor = m.challenger_color || '#44FF22';
     const dColor = m.defender_color || '#8b4dff';
 
-    const statusMeta = {
-      negotiating: { label: 'NEGOTIATING', accent: 'var(--amber)' },
-      locked:      { label: '⚡ LOCKED IN', accent: 'var(--volt)' },
-      active:      { label: '🔴 LIVE NOW',  accent: 'var(--red)' },
-      disputed:    { label: '⚠️ DISPUTED',  accent: 'var(--red)' },
-      resolved:    { label: '✓ FINAL',      accent: '#44FF22' },
-      voided:      { label: 'VOIDED',       accent: 'var(--muted)' },
-    };
-    const { label: statusLabel, accent } = statusMeta[m.status] || { label: m.status.toUpperCase(), accent: 'var(--muted)' };
+    const isLive     = m.status === 'active';
+    const isLocked   = m.status === 'locked';
+    const isFinal    = m.status === 'resolved' || m.status === 'voided';
+    const isDisputed = m.status === 'disputed';
+
+    // Per-status card class + accent
+    let cardClass = 'wire-card';
+    let accent, statusLabel, statusDot = '';
+    if (isLocked) {
+      cardClass += ' wire-card--locked';
+      accent = 'var(--volt)';
+      statusLabel = '⚡ LOCKED IN';
+    } else if (isLive) {
+      cardClass += ' wire-card--live';
+      accent = '#ff3c3c';
+      statusLabel = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff3c3c;margin-right:5px;animation:livePulse 1.2s ease-in-out infinite;vertical-align:middle;"></span>LIVE NOW';
+    } else if (isFinal) {
+      cardClass += ' wire-card--final';
+      accent = m.status === 'voided' ? 'var(--muted)' : 'rgba(255,255,255,0.18)';
+      statusLabel = m.status === 'voided' ? 'VOIDED' : '✓ FINAL';
+    } else if (isDisputed) {
+      accent = 'var(--red)';
+      statusLabel = '⚠️ DISPUTED';
+    } else {
+      accent = 'var(--amber)';
+      statusLabel = 'NEGOTIATING';
+    }
+
+    // For final cards: which side won/lost
+    const winnerId = m.winner_crew_id;
+    const cIsWinner = winnerId === m.challenger_crew_id;
+    const dIsWinner = winnerId === m.defender_crew_id;
+    const cLoserClass = (isFinal && winnerId && !cIsWinner) ? ' wire-loser' : '';
+    const dLoserClass = (isFinal && winnerId && !dIsWinner) ? ' wire-loser' : '';
+    const cWinStyle   = (isFinal && cIsWinner) ? `color:#fff;text-shadow:0 0 12px ${cColor}88;` : '';
+    const dWinStyle   = (isFinal && dIsWinner) ? `color:#fff;text-shadow:0 0 12px ${dColor}88;` : '';
 
     let timeLabel = '';
     if (m.scheduled_time) {
@@ -1343,35 +1370,37 @@ const App = (() => {
       else if (diffH >= 24)               timeLabel = `${d.toLocaleDateString([],{month:'short',day:'numeric'})} · ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
     }
 
+    // VS divider style varies by status
+    const vsStyle = isLive
+      ? `font-family:'Big Shoulders Display',sans-serif;font-size:26px;font-weight:900;color:#ff3c3c;text-align:center;padding:0 4px;text-shadow:0 0 16px #ff3c3c88;`
+      : isLocked
+        ? `font-family:'Big Shoulders Display',sans-serif;font-size:26px;font-weight:900;color:var(--volt);text-align:center;padding:0 4px;text-shadow:0 0 16px #44ff2266;`
+        : `font-family:'Big Shoulders Display',sans-serif;font-size:22px;font-weight:900;color:var(--muted);text-align:center;padding:0 4px;`;
+
     return `
-      <div class="wire-card" style="border-left:3px solid ${accent};">
+      <div class="${cardClass}" style="border-left:3px solid ${accent};">
 
         <!-- Header row: status + hype -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-          <span style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;font-weight:900;letter-spacing:0.12em;color:${accent};">${statusLabel}</span>
+          <span style="font-family:'Big Shoulders Display',sans-serif;font-size:11px;font-weight:900;letter-spacing:0.12em;color:${isLive ? '#ff3c3c' : isLocked ? 'var(--volt)' : isFinal ? 'var(--muted)' : 'var(--amber)'};">${statusLabel}</span>
           ${isUpcoming
             ? `<button class="hype-btn" onclick="App.hype(${m.id}, this)">🔥 <span class="hype-count">${m.hype_count || 0}</span></button>`
             : `<span style="font-size:12px;color:var(--muted);">🔥 ${m.hype_count || 0}</span>`}
         </div>
 
         <!-- VS matchup -->
-        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:14px;">
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.challenger_crew_id})">
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:14px;position:relative;">
+          <div class="${cLoserClass}" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.challenger_crew_id})">
             ${crewAvatar(m.challenger_crew_id, m.challenger_name, cColor, 40)}
-            <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;color:var(--text);text-align:right;">${m.challenger_name}</div>
+            <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;text-align:right;${cWinStyle || 'color:var(--text);'}">${m.challenger_name}${cIsWinner && isFinal ? ' 🏆' : ''}</div>
           </div>
-          <div style="font-family:'Big Shoulders Display',sans-serif;font-size:22px;font-weight:900;color:var(--muted);text-align:center;padding:0 4px;">VS</div>
-          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.defender_crew_id})">
+          <div style="${vsStyle}">VS</div>
+          <div class="${dLoserClass}" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer;" onclick="App.viewCrewProfile(${m.defender_crew_id})">
             ${crewAvatar(m.defender_crew_id, m.defender_name, dColor, 40)}
-            <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;color:var(--text);text-align:left;">${m.defender_name}</div>
+            <div style="font-family:'Big Shoulders Display',sans-serif;font-size:15px;font-weight:900;line-height:1;text-align:left;${dWinStyle || 'color:var(--text);'}">${m.defender_name}${dIsWinner && isFinal ? ' 🏆' : ''}</div>
           </div>
+          ${isFinal && winnerId ? `<div class="wire-stamp">BODIED</div>` : ''}
         </div>
-
-        ${m.status === 'resolved' && m.winner_name ? `
-          <div style="text-align:center;font-family:'Big Shoulders Display',sans-serif;font-size:12px;font-weight:900;letter-spacing:0.1em;color:var(--volt);background:rgba(68,255,34,0.08);border:1px solid rgba(68,255,34,0.2);border-radius:4px;padding:5px;margin-bottom:12px;">
-            🏆 ${m.winner_name.toUpperCase()} WIN
-          </div>
-        ` : ''}
 
         ${m.x_message ? `
           <div style="font-size:11px;color:var(--muted);font-style:italic;border-left:2px solid var(--border);padding-left:8px;margin-bottom:12px;">"${m.x_message}"</div>
@@ -1393,7 +1422,7 @@ const App = (() => {
         </div>
 
         <!-- Action -->
-        <button class="btn btn-volt btn-full" style="font-size:12px;" onclick="App.navMatchDetail(${m.id})">VIEW MATCH →</button>
+        <button class="btn ${isLive ? 'btn-danger' : isLocked ? 'btn-volt' : 'btn-outline'} btn-full" style="font-size:12px;" onclick="App.navMatchDetail(${m.id})">VIEW MATCH →</button>
       </div>
     `;
   }
