@@ -366,7 +366,6 @@ const App = (() => {
         const res = await api('POST', '/api/auth/send-otp', { phone });
         state.pendingPhone = phone;
         state.pendingHandle = handle;
-        state.mockOtpCode = res.mock_code;
         show('otp');
       } catch (e) {
         errEl.textContent = e.message;
@@ -381,10 +380,6 @@ const App = (() => {
       <div id="view-otp">
         <div class="otp-title">Check Your Phone</div>
         <div class="otp-sub">We sent a 6-digit code to<br><strong>${state.pendingPhone}</strong></div>
-
-        <div class="otp-mock-hint">
-          🔧 DEV MODE — your code is: <strong>${state.mockOtpCode}</strong>
-        </div>
 
         <div class="form-wide">
           <div id="otp-error" class="msg-error" style="display:none"></div>

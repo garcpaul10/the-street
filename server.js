@@ -22,12 +22,8 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── In-memory OTP store (mock — replace with Twilio Verify in production) ──
-const otpStore = new Map(); // phone -> { code, expires }
-
-function generateOTP() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
+const twilio = require('twilio');
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 // ── Auth middleware ──
 function requireAuth(req, res, next) {
@@ -51,27 +47,38 @@ app.get('/api/public/today-matches', async (req, res) => {
 
 // ── AUTH ──
 
-// Step 1: send OTP (mock)
+// Step 1: send OTP via Twilio Verify
 app.post('/api/auth/send-otp', async (req, res) => {
   const { phone } = req.body;
   if (!phone || phone.trim().length < 7) {
     return res.status(400).json({ error: 'Valid phone number required' });
   }
-  const code = generateOTP();
-  otpStore.set(phone.trim(), { code, expires: Date.now() + 10 * 60 * 1000 });
-  // In production: call Twilio Verify here
-  console.log(`[MOCK OTP] ${phone} → ${code}`);
-  res.json({ success: true, mock_code: code }); // remove mock_code in production
+  try {
+    await twilioClient.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verifications.create({ to: phone.trim(), channel: 'sms' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Twilio send-otp error:', err.message);
+    res.status(500).json({ error: 'Failed to send verification code. Check your number and try again.' });
+  }
 });
 
-// Step 2: verify OTP
+// Step 2: verify OTP via Twilio Verify
 app.post('/api/auth/verify-otp', async (req, res) => {
   const { phone, code } = req.body;
-  const stored = otpStore.get(phone?.trim());
-  if (!stored || stored.code !== code?.trim() || Date.now() > stored.expires) {
+  let check;
+  try {
+    check = await twilioClient.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verificationChecks.create({ to: phone.trim(), code: code.trim() });
+  } catch (err) {
+    console.error('Twilio verify-otp error:', err.message);
     return res.status(400).json({ error: 'Invalid or expired code' });
   }
-  otpStore.delete(phone.trim());
+  if (check.status !== 'approved') {
+    return res.status(400).json({ error: 'Invalid or expired code' });
+  }
 
   // Check if user exists
   const existing = await pool.query('SELECT id, username FROM users WHERE phone_number = $1', [phone.trim()]);
